@@ -12,6 +12,13 @@ gh:
 	&& sudo apt update \
 	&& sudo apt install gh -y
 
+restart:
+	sudo systemctl restart nginx
+
+alp:
+	cat /var/log/nginx/access.log | alp json --sort sum -r -m "^/api/isu/[\w\d-]+$$,^/api/isu/[\w\d-]+/icon$$,^/api/isu/[\w\d-]+/graph$$,^/api/condition/[\w\d-]+$$,^/isu/[\w\d-]+/icon$$,^/isu/[\w\d-]+/graph$$,^/isu/[\w\d-]+$$,^/isu/[\w\d-]+/condition$$" -o count,method,uri,min,avg,max,sum
+
+
 # isucon11qの接続パラメータであるため、今後いい感じにする
 mysql/client:
 	@mysql -h 127.0.0.1 -P 3306 -u isucon isucondition -pisucon
