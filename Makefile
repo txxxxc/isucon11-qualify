@@ -23,7 +23,7 @@ alp:
         -o count,method,uri,min,avg,max,sum
 
 mysqldump:
-	mysqldump -u isucon -pisucon -h localhost --no-data isucondition > log/mysqldump/$(date +%Y_%m%d_%H%M).txt
+	mysqldump -u isucon -pisucon -h localhost --no-data isucondition > log/mysqldump/$$(date +%Y_%m%d_%H%M).txt
 
 tools:
 	sudo apt-get install percona-toolkit
@@ -32,7 +32,7 @@ tools:
 	sudo mv alp /usr/local/bin/
 	rm -rf alp_linux_amd64.zip
 bench: 
-	(cd bench && ./bench -all-addresses 127.0.0.11 -target 127.0.0.11:443 -tls -jia-service-url http://127.0.0.1:4999 | tee ~/log/bench/$(date +%Y_%m%d_%H%M).txt)
+	(cd bench && ./bench -all-addresses 127.0.0.11 -target 127.0.0.11:443 -tls -jia-service-url http://127.0.0.1:4999 | tee ~/log/bench/$$(date +%Y_%m%d_%H%M).txt)
 
 symlink-nginx:
 	sudo ln -sf webapp/isucondition.conf /etc/nginx/conf.d/isucondition.conf
@@ -42,9 +42,9 @@ mysql/client:
 	@mysql -h 127.0.0.1 -P 3306 -u isucon isucondition -pisucon
 
 rotate:
-	sudo mv /var/log/mysql/slow-query.log /var/log/mysql/$(date +%Y_%m%d_%H%M)_slow-query.log
+	sudo mv /var/log/mysql/slow-query.log /var/log/mysql/$$(date +%Y_%m%d_%H%M)_slow-query.log
 	sudo systemctl restart mysqld.service
-	sudo mv /var/log/nginx/access.log /var/log/nginx/$(date +%Y_%m%d_%H%M).access.log
+	sudo mv /var/log/nginx/access.log /var/log/nginx/$$(date +%Y_%m%d_%H%M).access.log
 	sudo systemctl restart nginx.service
 
 reload: 
@@ -52,7 +52,7 @@ reload:
 	sudo systemctl restart isucondition.go.service
 
 pt-query-digest:
-	sudo pt-query-digest /var/log/mysql/slow-query.log | tee log/slow-query/$(date +%Y_%m%d_%H%M).txt
+	sudo pt-query-digest /var/log/mysql/slow-query.log | tee log/slow-query/$$(date +%Y_%m%d_%H%M).txt
 
 
 # echoを見せているのは、どんなクエリ投げたっけを見るためにしてる
