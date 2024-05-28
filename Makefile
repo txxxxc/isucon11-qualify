@@ -26,13 +26,17 @@ mysqldump:
 	mysqldump -u isucon -pisucon -h localhost --no-data isucondition > log/mysqldump/$$(date +%Y_%m%d_%H%M).txt
 
 tools:
-	sudo apt-get install percona-toolkit
+	sudo apt-get install -y percona-toolkit gv graphviz
 	wget https://github.com/tkuchiki/alp/releases/download/v1.0.21/alp_linux_amd64.zip
 	unzip alp_linux_amd64.zip
 	sudo mv alp /usr/local/bin/
 	rm -rf alp_linux_amd64.zip
 bench: 
 	(cd bench && ./bench -all-addresses 127.0.0.11 -target 127.0.0.11:443 -tls -jia-service-url http://127.0.0.1:4999 | tee ~/log/bench/$$(date +%Y_%m%d_%H%M).txt)
+
+build:
+	(cd webapp/go && go build .)
+
 
 symlink-nginx:
 	sudo ln -sf webapp/isucondition.conf /etc/nginx/conf.d/isucondition.conf
@@ -48,7 +52,6 @@ rotate:
 	sudo systemctl restart nginx.service
 
 reload: 
-	go build .
 	sudo systemctl restart isucondition.go.service
 
 pt-query-digest:
