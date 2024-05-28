@@ -13,12 +13,12 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/exec"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
