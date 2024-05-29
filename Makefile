@@ -29,6 +29,7 @@ tools:
 	unzip alp_linux_amd64.zip
 	sudo mv alp /usr/local/bin/
 	rm -rf alp_linux_amd64.zip
+.PHONY: bench
 bench: 
 	(cd bench && ./bench -all-addresses 127.0.0.11 -target 127.0.0.11:443 -tls -jia-service-url http://127.0.0.1:4999 | tee ~/log/bench/$$(date +%Y_%m%d_%H%M).txt)
 
