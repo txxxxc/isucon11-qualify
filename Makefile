@@ -18,9 +18,7 @@ git:
 	git config --global core.editor vim
 
 alp:
-	cat /var/log/nginx/access.log | alp json --sort sum -r \ 
-	-m '^/api/isu/[\w\d-]+$$,^/api/isu/[\w\d-]+/icon$$,^/api/isu/[\w\d-]+/graph$$,^/api/condition/[\w\d-]+$$,^/isu/[\w\d-]+/icon$$,^/isu/[\w\d-]+/graph$$,^/isu/[\w\d-]+$$,^/isu/[\w\d-]+/condition$$' \
-        -o count,method,uri,min,avg,max,sum
+	cat /var/log/nginx/access.log | alp json --sort sum -r -m '^/api/isu/[\w\d-]+$$,^/api/isu/[\w\d-]+/icon$$,^/api/isu/[\w\d-]+/graph$$,^/api/condition/[\w\d-]+$$,^/isu/[\w\d-]+/icon$$,^/isu/[\w\d-]+/graph$$,^/isu/[\w\d-]+$$,^/isu/[\w\d-]+/condition$$' -o count,method,uri,min,avg,max,sum
 
 mysqldump:
 	mysqldump -u isucon -pisucon -h localhost --no-data isucondition > log/mysqldump/$$(date +%Y_%m%d_%H%M).txt
@@ -31,6 +29,7 @@ tools:
 	unzip alp_linux_amd64.zip
 	sudo mv alp /usr/local/bin/
 	rm -rf alp_linux_amd64.zip
+.PHONY: bench
 bench: 
 	(cd bench && ./bench -all-addresses 127.0.0.11 -target 127.0.0.11:443 -tls -jia-service-url http://127.0.0.1:4999 | tee ~/log/bench/$$(date +%Y_%m%d_%H%M).txt)
 
