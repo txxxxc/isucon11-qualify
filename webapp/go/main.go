@@ -1172,6 +1172,11 @@ func postIsuCondition(c echo.Context) error {
 
 	req := []PostIsuConditionRequest{}
 	err := c.Bind(&req)
+	// reqをstringでログに出力
+	// わかりやすいように強調
+	c.Logger().Infof("### PostIsuConditionReqeust ###")
+	c.Logger().Infof("req: %v", req)
+	c.Logger().Infof("### PostIsuConditionReqeust ###")
 	if err != nil {
 		return c.String(http.StatusBadRequest, "bad request body")
 	} else if len(req) == 0 {
