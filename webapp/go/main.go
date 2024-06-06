@@ -1172,7 +1172,7 @@ func postIsuCondition(c echo.Context) error {
 
 	req := []PostIsuConditionRequest{}
 	err := c.Bind(&req)
-	// reqをstringでログに出力
+	// reqをjson形式でログに出力
 	// わかりやすいように強調
 	c.Logger().Infof("### PostIsuConditionReqeust ###")
 	c.Logger().Infof("req: %v", req)
@@ -1228,7 +1228,7 @@ func postIsuCondition(c echo.Context) error {
 		}
 	}
 
-	query := "INSERT INTO `isu_condition` (`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`) VALUES (:condition)"
+	query := "INSERT INTO `isu_condition` (`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`) VALUES (:jia_isu_uuid, :timestamp, :is_sitting, :condition, :message)"
 	_, err = tx.NamedExec(query, conds)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
