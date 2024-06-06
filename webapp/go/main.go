@@ -1200,23 +1200,39 @@ func postIsuCondition(c echo.Context) error {
 		return c.String(http.StatusNotFound, "not found: isu")
 	}
 
-	for _, cond := range req {
-		timestamp := time.Unix(cond.Timestamp, 0)
+	// isu_conditionテーブルのカラムを表す構造体
+	type IsuCondition struct {
+		JiaIsuUUID string    `db:"jia_isu_uuid"`
+		Timestamp  time.Time `db:"timestamp"`
+		IsSitting  bool      `db:"is_sitting"`
+		Condition  string    `db:"condition"`
+		Message    string    `db:"message"`
+	}
 
+	// reqの内容をisu_conditionテーブルにbulk insert
+	// reqの内容をIsuCondition構造体に変換してbulk insert
+	// Isuconditionを格納する配列を定義
+	conds := make([]IsuCondition, len(req))
+	// IsuCondition構造体に変換して配列に格納
+	for i, cond := range req {
 		if !isValidConditionFormat(cond.Condition) {
 			return c.String(http.StatusBadRequest, "bad request body")
 		}
-
-		_, err = tx.Exec(
-			"INSERT INTO `isu_condition`"+
-				"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
-				"	VALUES (?, ?, ?, ?, ?)",
-			jiaIsuUUID, timestamp, cond.IsSitting, cond.Condition, cond.Message)
-		if err != nil {
-			c.Logger().Errorf("db error: %v", err)
-			return c.NoContent(http.StatusInternalServerError)
+		timestamp := time.Unix(cond.Timestamp, 0)
+		conds[i] = IsuCondition{
+			JiaIsuUUID: jiaIsuUUID,
+			Timestamp:  timestamp,
+			IsSitting:  cond.IsSitting,
+			Condition:  cond.Condition,
+			Message:    cond.Message,
 		}
+	}
 
+	query := "INSERT INTO `isu_condition` (`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`) VALUES (:condition)"
+	_, err = tx.NamedExec(query, conds)
+	if err != nil {
+		c.Logger().Errorf("db error: %v", err)
+		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	err = tx.Commit()
