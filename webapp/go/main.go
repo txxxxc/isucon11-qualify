@@ -219,6 +219,14 @@ func main() {
 
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
+	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{
+		Skipper:      middleware.DefaultSkipper,
+		ErrorMessage: "custom timeout error message returns to client",
+		OnTimeoutRouteErrorHandler: func(err error, c echo.Context) {
+			c.Logger().Errorf("Timeout path: %s", c.Path())
+		},
+		Timeout: 30 * time.Second,
+	}))
 
 	e.POST("/initialize", postInitialize)
 
