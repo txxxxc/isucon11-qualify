@@ -1172,11 +1172,7 @@ func postIsuCondition(c echo.Context) error {
 
 	req := []PostIsuConditionRequest{}
 	err := c.Bind(&req)
-	// reqをjson形式でログに出力
-	// わかりやすいように強調
-	c.Logger().Infof("### PostIsuConditionReqeust ###")
-	c.Logger().Infof("req: %v", req)
-	c.Logger().Infof("### PostIsuConditionReqeust ###")
+
 	if err != nil {
 		return c.String(http.StatusBadRequest, "bad request body")
 	} else if len(req) == 0 {
@@ -1209,11 +1205,7 @@ func postIsuCondition(c echo.Context) error {
 		Message    string    `db:"message"`
 	}
 
-	// reqの内容をisu_conditionテーブルにbulk insert
-	// reqの内容をIsuCondition構造体に変換してbulk insert
-	// Isuconditionを格納する配列を定義
 	conds := make([]IsuCondition, len(req))
-	// IsuCondition構造体に変換して配列に格納
 	for i, cond := range req {
 		if !isValidConditionFormat(cond.Condition) {
 			return c.String(http.StatusBadRequest, "bad request body")
