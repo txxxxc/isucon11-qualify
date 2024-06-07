@@ -225,7 +225,7 @@ func main() {
 		OnTimeoutRouteErrorHandler: func(err error, c echo.Context) {
 			c.Logger().Errorf("Timeout path: %s", c.Path())
 		},
-		Timeout: 30 * time.Second,
+		Timeout: 60 * time.Second,
 	}))
 
 	e.POST("/initialize", postInitialize)
