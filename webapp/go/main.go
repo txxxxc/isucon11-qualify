@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -219,14 +220,6 @@ func main() {
 
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
-	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{
-		Skipper:      middleware.DefaultSkipper,
-		ErrorMessage: "custom timeout error message returns to client",
-		OnTimeoutRouteErrorHandler: func(err error, c echo.Context) {
-			c.Logger().Errorf("Timeout path: %s", c.Path())
-		},
-		Timeout: 60 * time.Second,
-	}))
 
 	e.POST("/initialize", postInitialize)
 
@@ -1172,6 +1165,13 @@ func getTrend(c echo.Context) error {
 // POST /api/condition/:jia_isu_uuid
 // ISUからのコンディションを受け取る
 func postIsuCondition(c echo.Context) error {
+
+	// TODO: 一定割合リクエストを落としてしのぐようにしたが、本来は全量さばけるようにすべき
+	dropProbability := 0.9
+	if rand.Float64() <= dropProbability {
+		c.Logger().Warnf("drop post isu condition request")
+		return c.NoContent(http.StatusAccepted)
+	}
 
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 	if jiaIsuUUID == "" {
