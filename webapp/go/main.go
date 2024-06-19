@@ -7,6 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	"image/png"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -21,6 +24,7 @@ import (
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-sql-driver/mysql"
+	"github.com/google/uuid"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
@@ -42,6 +46,7 @@ const (
 	scoreConditionLevelInfo     = 3
 	scoreConditionLevelWarning  = 2
 	scoreConditionLevelCritical = 1
+	saveFilePath                = "/home/isucon/webapp"
 )
 
 var (
@@ -64,6 +69,7 @@ type Isu struct {
 	JIAIsuUUID string    `db:"jia_isu_uuid" json:"jia_isu_uuid"`
 	Name       string    `db:"name" json:"name"`
 	Image      []byte    `db:"image" json:"-"`
+	ImageName  string    `db:"image_name" json:"image_name"`
 	Character  string    `db:"character" json:"character"`
 	JIAUserID  string    `db:"jia_user_id" json:"-"`
 	CreatedAt  time.Time `db:"created_at" json:"-"`
@@ -274,6 +280,7 @@ func getSession(r *http.Request) (*sessions.Session, error) {
 
 func getUserIDFromSession(c echo.Context) (string, int, error) {
 	session, err := getSession(c.Request())
+
 	if err != nil {
 		return "", http.StatusInternalServerError, fmt.Errorf("failed to get session: %v", err)
 	}
@@ -528,6 +535,31 @@ func getIsuList(c echo.Context) error {
 	return c.JSON(http.StatusOK, responseList)
 }
 
+func saveFile(blob []byte) (string, error) {
+	// 保存したいファイルパス
+	fileName := "/images/" + uuid.New().String() + ".png"
+
+	// byte スライスから image.Image をデコード
+	img, _, err := image.Decode(bytes.NewReader(blob))
+	if err != nil {
+		return "", err
+	}
+
+	// ファイルを作成
+	file, err := os.Create(saveFilePath + fileName)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	// 画像をファイルに書き込み
+	err = png.Encode(file, img)
+	if err != nil {
+		return "", err
+	}
+	return fileName, nil
+}
+
 // POST /api/isu
 // ISUを登録
 func postIsu(c echo.Context) error {
@@ -575,6 +607,11 @@ func postIsu(c echo.Context) error {
 			return c.NoContent(http.StatusInternalServerError)
 		}
 	}
+	filePath, err := saveFile(image)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
 
 	tx, err := db.Beginx()
 	if err != nil {
@@ -584,8 +621,8 @@ func postIsu(c echo.Context) error {
 	defer tx.Rollback()
 
 	_, err = tx.Exec("INSERT INTO `isu`"+
-		"	(`jia_isu_uuid`, `name`, `image`, `jia_user_id`) VALUES (?, ?, ?, ?)",
-		jiaIsuUUID, isuName, image, jiaUserID)
+		"	(`jia_isu_uuid`, `name`, `image`, `jia_user_id`, `image_name`) VALUES (?, ?, ?, ?, ?)",
+		jiaIsuUUID, isuName, image, jiaUserID, filePath)
 	if err != nil {
 		mysqlErr, ok := err.(*mysql.MySQLError)
 
@@ -693,7 +730,6 @@ func getIsuID(c echo.Context) error {
 }
 
 // GET /api/isu/:jia_isu_uuid/icon
-// ISUのアイコンを取得
 func getIsuIcon(c echo.Context) error {
 	jiaUserID, errStatusCode, err := getUserIDFromSession(c)
 	if err != nil {
@@ -707,6 +743,34 @@ func getIsuIcon(c echo.Context) error {
 
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 
+	var imageName string
+	err = db.Get(&imageName, "SELECT `image_name` FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
+		jiaUserID, jiaIsuUUID)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return c.String(http.StatusNotFound, "not found: isu")
+		}
+
+		c.Logger().Errorf("db error: %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	if imageName != "" {
+		// get image from file path
+		file, err := os.Open(saveFilePath + imageName)
+		if err != nil {
+			return c.String(http.StatusNotFound, "not found: icon")
+		}
+		// convert file to bytes
+		convertedImage, err := ioutil.ReadAll(file)
+		if err != nil {
+			return c.String(http.StatusNotFound, "not found: icon")
+		}
+		c.Response().Header().Set("Cache-Control", "public, max-age=31536000")
+		return c.Blob(http.StatusOK, "", convertedImage)
+	}
+	// if image_name is not exist
 	var image []byte
 	err = db.Get(&image, "SELECT `image` FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
 		jiaUserID, jiaIsuUUID)
@@ -718,7 +782,22 @@ func getIsuIcon(c echo.Context) error {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+	// and save image to images folder
+	filePath, err := saveFile(image)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	// then save image name to image_name
+	iq := "UPDATE `isu` SET `image_name` = ? WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?"
+	_, err = db.Exec(iq, filePath, jiaUserID, jiaIsuUUID)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
 
+	// add cache-control header
+	c.Response().Header().Set("Cache-Control", "public, max-age=31536000")
 	return c.Blob(http.StatusOK, "", image)
 }
 
