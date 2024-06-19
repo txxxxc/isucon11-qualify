@@ -8,7 +8,7 @@ CREATE TABLE `isu` (
   `jia_isu_uuid` CHAR(36) NOT NULL UNIQUE,
   `name` VARCHAR(255) NOT NULL,
   `image` LONGBLOB,
-  `image_name` VARCHAR(255) Default '',
+  `image_name` VARCHAR(255) DEFAULT '',
   `character` VARCHAR(255),
   `jia_user_id` VARCHAR(255) NOT NULL,
   `created_at` DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
