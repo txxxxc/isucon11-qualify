@@ -11,7 +11,6 @@ CREATE TABLE `isu` (
   `image_name` VARCHAR(255) NOT NULL Default '',
   `character` VARCHAR(255),
   `jia_user_id` VARCHAR(255) NOT NULL,
-  `jia_user_id` VARCHAR(255) NOT NULL,
   `created_at` DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
   `updated_at` DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
    PRIMARY KEY(`id`),
