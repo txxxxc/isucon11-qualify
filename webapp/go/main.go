@@ -24,7 +24,6 @@ import (
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-sql-driver/mysql"
-	"github.com/google/uuid"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
@@ -69,7 +68,6 @@ type Isu struct {
 	JIAIsuUUID string    `db:"jia_isu_uuid" json:"jia_isu_uuid"`
 	Name       string    `db:"name" json:"name"`
 	Image      []byte    `db:"image" json:"-"`
-	ImageName  string    `db:"image_name" json:"image_name"`
 	Character  string    `db:"character" json:"character"`
 	JIAUserID  string    `db:"jia_user_id" json:"-"`
 	CreatedAt  time.Time `db:"created_at" json:"-"`
@@ -535,29 +533,40 @@ func getIsuList(c echo.Context) error {
 	return c.JSON(http.StatusOK, responseList)
 }
 
-func saveFile(blob []byte) (string, error) {
+func isFileExist(filePath string) (ok bool, err error) {
+	_, err = os.Stat(filePath)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func saveFile(id string, blob []byte) error {
 	// 保存したいファイルパス
-	fileName := "/images/" + uuid.New().String() + ".png"
+	fileName := fmt.Sprintf("/images/%s.png", id)
 
 	// byte スライスから image.Image をデコード
 	img, _, err := image.Decode(bytes.NewReader(blob))
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	// ファイルを作成
 	file, err := os.Create(saveFilePath + fileName)
 	if err != nil {
-		return "", err
+		return err
 	}
 	defer file.Close()
 
 	// 画像をファイルに書き込み
 	err = png.Encode(file, img)
 	if err != nil {
-		return "", err
+		return err
 	}
-	return fileName, nil
+	return nil
 }
 
 // POST /api/isu
@@ -607,7 +616,8 @@ func postIsu(c echo.Context) error {
 			return c.NoContent(http.StatusInternalServerError)
 		}
 	}
-	filePath, err := saveFile(image)
+
+	err = saveFile(jiaIsuUUID, image)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -621,8 +631,8 @@ func postIsu(c echo.Context) error {
 	defer tx.Rollback()
 
 	_, err = tx.Exec("INSERT INTO `isu`"+
-		"	(`jia_isu_uuid`, `name`, `image`, `jia_user_id`, `image_name`) VALUES (?, ?, ?, ?, ?)",
-		jiaIsuUUID, isuName, image, jiaUserID, filePath)
+		"	(`jia_isu_uuid`, `name`, `image`, `jia_user_id`) VALUES (?, ?, ?, ?)",
+		jiaIsuUUID, isuName, image, jiaUserID)
 	if err != nil {
 		mysqlErr, ok := err.(*mysql.MySQLError)
 
@@ -743,22 +753,17 @@ func getIsuIcon(c echo.Context) error {
 
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 
-	var imageName string
-	err = db.Get(&imageName, "SELECT `image_name` FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
-		jiaUserID, jiaIsuUUID)
+	fullPath := fmt.Sprintf("%s/images/%s.png", saveFilePath, jiaIsuUUID)
+	ok, err := isFileExist(fullPath)
 
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return c.String(http.StatusNotFound, "not found: isu")
-		}
-
-		c.Logger().Errorf("db error: %v", err)
+		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	if imageName != "" {
+	if ok {
 		// get image from file path
-		file, err := os.Open(saveFilePath + imageName)
+		file, err := os.Open(fullPath)
 		if err != nil {
 			return c.String(http.StatusNotFound, "not found: icon")
 		}
@@ -770,7 +775,7 @@ func getIsuIcon(c echo.Context) error {
 		c.Response().Header().Set("Cache-Control", "public, max-age=31536000")
 		return c.Blob(http.StatusOK, "", convertedImage)
 	}
-	// if image_name is not exist
+
 	var image []byte
 	err = db.Get(&image, "SELECT `image` FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
 		jiaUserID, jiaIsuUUID)
@@ -783,19 +788,11 @@ func getIsuIcon(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	// and save image to images folder
-	filePath, err := saveFile(image)
+	err = saveFile(jiaIsuUUID, image)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-	// then save image name to image_name
-	iq := "UPDATE `isu` SET `image_name` = ? WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?"
-	_, err = db.Exec(iq, filePath, jiaUserID, jiaIsuUUID)
-	if err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
 	// add cache-control header
 	c.Response().Header().Set("Cache-Control", "public, max-age=31536000")
 	return c.Blob(http.StatusOK, "", image)
