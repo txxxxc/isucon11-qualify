@@ -761,7 +761,7 @@ func getIsuIcon(c echo.Context) error {
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 
 	fullPath := fmt.Sprintf("%s/images/%s.png", saveFilePath, jiaIsuUUID)
-	fileName, err := isFileExist(fullPath)
+	fileName, err := isFileExist(jiaIsuUUID)
 
 	if err != nil {
 		c.Logger().Error(err)
