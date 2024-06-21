@@ -533,16 +533,16 @@ func getIsuList(c echo.Context) error {
 	return c.JSON(http.StatusOK, responseList)
 }
 
-func isFileExist(name string) (fileName string, err error) {
+func isFileExist(name string) string {
 	// 拡張子の配列
 	exts := []string{"jpg", "jpeg", "png"}
 	for _, ext := range exts {
-		fileName = fmt.Sprintf("%s.%s", name, ext)
+		fileName := fmt.Sprintf("%s.%s", name, ext)
 		if _, err := os.Stat(saveFilePath + "/images/" + fileName); err == nil {
-			return fileName, nil
+			return fileName
 		}
 	}
-	return "", fmt.Errorf("file not found")
+	return ""
 }
 
 func saveFile(id, ext string, blob []byte) error {
@@ -760,12 +760,7 @@ func getIsuIcon(c echo.Context) error {
 
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 
-	fileName, err := isFileExist(jiaIsuUUID)
-
-	if err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
+	fileName := isFileExist(jiaIsuUUID)
 
 	if fileName != "" {
 		// get image from file path
