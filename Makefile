@@ -56,6 +56,8 @@ reload:
 pt-query-digest:
 	sudo pt-query-digest /var/log/mysql/slow-query.log | tee log/slow-query/$$(date +%Y_%m%d_%H%M).txt
 
+serve:
+	build reload
 
 # echoを見せているのは、どんなクエリ投げたっけを見るためにしてる
 mysql/query: QUERY=

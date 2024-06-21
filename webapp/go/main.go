@@ -760,7 +760,6 @@ func getIsuIcon(c echo.Context) error {
 
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 
-	fullPath := fmt.Sprintf("%s/images/%s.png", saveFilePath, jiaIsuUUID)
 	fileName, err := isFileExist(jiaIsuUUID)
 
 	if err != nil {
@@ -770,7 +769,7 @@ func getIsuIcon(c echo.Context) error {
 
 	if fileName != "" {
 		// get image from file path
-		file, err := os.Open(fullPath)
+		file, err := os.Open(fmt.Sprintf("%s/images/%s", saveFilePath, fileName))
 		if err != nil {
 			return c.String(http.StatusNotFound, "not found: icon")
 		}
