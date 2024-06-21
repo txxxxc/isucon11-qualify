@@ -216,7 +216,7 @@ func main() {
 	e := echo.New()
 	e.Debug = true
 	e.Logger.SetLevel(log.DEBUG)
-	e.Logger.SetLevel(log.Error)
+	e.Logger.SetLevel(log.ERROR)
 	runtime.SetBlockProfileRate(1)
 	runtime.SetMutexProfileFraction(1)
 	go func() {
