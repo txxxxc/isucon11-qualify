@@ -787,20 +787,20 @@ func getIsuIcon(c echo.Context) error {
 		}
 
 		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
 	r := bytes.NewReader(img)
 	_, format, err := image.DecodeConfig(r)
 	if err != nil {
 		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
 	err = saveFile(jiaIsuUUID, format, img)
 	if err != nil {
 		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	// add cache-control header
 	c.Response().Header().Set("Cache-Control", "public, max-age=31536000")
