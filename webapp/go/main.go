@@ -773,7 +773,8 @@ func getIsuIcon(c echo.Context) error {
 		if err != nil {
 			return c.String(http.StatusNotFound, "not found: icon")
 		}
-		c.Response().Header().Set("Cache-Control", "public, max-age=31536000")
+//		c.Response().Header().Set("Cache-Control", "public, max-age=31536000")
+		c.Logger().Errorf("return image from images folder")
 		return c.Blob(http.StatusOK, "", convertedImage)
 	}
 
@@ -802,7 +803,8 @@ func getIsuIcon(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
 	// add cache-control header
-	c.Response().Header().Set("Cache-Control", "public, max-age=31536000")
+	//c.Response().Header().Set("Cache-Control", "public, max-age=31536000")
+	c.Logger().Errorf("return a raw data")
 	return c.Blob(http.StatusOK, "", img)
 }
 
