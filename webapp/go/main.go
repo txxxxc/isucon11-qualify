@@ -763,6 +763,18 @@ func getIsuIcon(c echo.Context) error {
 	c.Logger().Errorf("file name %v", fileName)
 
 	if fileName != "" {
+		var name string
+		// jia_user_id←ここじゃね？
+		err = db.Get(&name, "SELECT `name` FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
+			jiaUserID, jiaIsuUUID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return c.String(http.StatusNotFound, "not found: isu")
+			}
+
+			c.Logger().Errorf("db error: %v", err)
+			return c.String(http.StatusInternalServerError, err.Error())
+		}
 		// get image from file path
 		path := fmt.Sprintf("%s/images/%s", saveFilePath, fileName)
 		file, err := os.Open(path)
@@ -780,6 +792,7 @@ func getIsuIcon(c echo.Context) error {
 	}
 
 	var img []byte
+	// jia_user_id←ここじゃね？
 	err = db.Get(&img, "SELECT `image` FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
 		jiaUserID, jiaIsuUUID)
 	if err != nil {
