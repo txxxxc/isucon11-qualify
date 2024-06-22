@@ -760,6 +760,7 @@ func getIsuIcon(c echo.Context) error {
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 
 	fileName := isFileExist(jiaIsuUUID)
+	c.Logger().Errorf("file name %v", fileName)
 
 	if fileName != "" {
 		// get image from file path
