@@ -216,7 +216,6 @@ func main() {
 	e := echo.New()
 	e.Debug = true
 	e.Logger.SetLevel(log.DEBUG)
-	e.Logger.SetLevel(log.ERROR)
 	runtime.SetBlockProfileRate(1)
 	runtime.SetMutexProfileFraction(1)
 	go func() {
@@ -534,11 +533,11 @@ func getIsuList(c echo.Context) error {
 	return c.JSON(http.StatusOK, responseList)
 }
 
-func isFileExist(name string) string {
+func isFileExist(id string) string {
 	// 拡張子の配列
 	exts := []string{"jpg", "jpeg", "png"}
 	for _, ext := range exts {
-		fileName := fmt.Sprintf("%s.%s", name, ext)
+		fileName := fmt.Sprintf("%s.%s", id, ext)
 		if _, err := os.Stat(saveFilePath + "/images/" + fileName); err == nil {
 			return fileName
 		}
@@ -548,18 +547,17 @@ func isFileExist(name string) string {
 
 func saveFile(id, ext string, blob []byte) error {
 	// 保存したいファイルパス
-	fileName := fmt.Sprintf("/images/%s.%s", id, ext)
+	fileName := fmt.Sprintf("%s/images/%s.%s", saveFilePath, id, ext)
 
 	// ファイルを作成
-	file, err := os.Create(saveFilePath + fileName)
+	file, err := os.Create(fileName)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
 	// blobをファイルに書き込む
-	// 0644 means that the file is readable and writable by the owner,
-	err = ioutil.WriteFile(saveFilePath+fileName, blob, 0644)
+	err = os.WriteFile(fileName, blob, 0666)
 	if err != nil {
 		return err
 	}
@@ -765,7 +763,8 @@ func getIsuIcon(c echo.Context) error {
 
 	if fileName != "" {
 		// get image from file path
-		file, err := os.Open(fmt.Sprintf("%s/images/%s", saveFilePath, fileName))
+		path := fmt.Sprintf("%s/images/%s", saveFilePath, fileName)
+		file, err := os.Open(path)
 		if err != nil {
 			return c.String(http.StatusNotFound, "not found: icon")
 		}
