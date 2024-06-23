@@ -3,6 +3,8 @@ SHELL=/bin/bash
 # Issue番号は用途によって分けているけど、とりあえずDB周りは1
 ISSUE=1
 
+BENCH_ISSUE_NUMBER=18
+
 # https://github.com/cli/cli/blob/trunk/docs/install_linux.md#official-sources
 gh:
 	type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
@@ -56,8 +58,7 @@ reload:
 pt-query-digest:
 	sudo pt-query-digest /var/log/mysql/slow-query.log | tee log/slow-query/$$(date +%Y_%m%d_%H%M).txt
 
-serve:
-	build reload
+serve: build reload
 
 # echoを見せているのは、どんなクエリ投げたっけを見るためにしてる
 mysql/query: QUERY=
@@ -67,3 +68,6 @@ mysql/query:
 mysql/query/gh: QUERY=
 mysql/query/gh:
 	$(MAKE) mysql/query QUERY="$(QUERY)" | tee >(gh issue comment $(ISSUE) -F -)
+
+bench/send: FILE=
+	 cat $(FILE) | echo "\`\`\`$(cat - )\`\`\`" | gh issue comment $(BENCH_ISSUE_NUMBER) -F -
