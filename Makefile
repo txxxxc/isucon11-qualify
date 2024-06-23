@@ -24,7 +24,7 @@ alp:
 
 alp/send:
 alp/send:
-	cat /var/log/nginx/access.log | alp json --sort sum -r -m '^/api/isu/[\w\d-]+$$,^/api/isu/[\w\d-]+/icon$$,^/api/isu/[\w\d-]+/graph$$,^/api/condition/[\w\d-]+$$,^/isu/[\w\d-]+/icon$$,^/isu/[\w\d-]+/graph$$,^/isu/[\w\d-]+$$,^/isu/[\w\d-]+/condition$$' -o count,method,uri,min,avg,max,sum | echo "\`\`\`\n$$(cat -)\n\`\`\`" | gh issue comment $(ALP_ISSUE_NUMBER) -F -
+	cat /var/log/nginx/access.log | alp json --sort sum -r -m '^/api/isu/[\w\d-]+$$,^/api/isu/[\w\d-]+/icon$$,^/api/isu/[\w\d-]+/graph$$,^/api/condition/[\w\d-]+$$,^/isu/[\w\d-]+/icon$$,^/isu/[\w\d-]+/graph$$,^/isu/[\w\d-]+$$,^/isu/[\w\d-]+/condition$$' -o count,method,uri,min,avg,max,sum | echo -e "\`\`\`\n$$(cat -)\n\`\`\`" | gh issue comment $(ALP_ISSUE_NUMBER) -F -
 
 mysqldump:
 	mysqldump -u isucon -pisucon -h localhost --no-data isucondition > log/mysqldump/$$(date +%Y_%m%d_%H%M).txt
@@ -42,7 +42,7 @@ bench:
 
 bench/send: FILE=
 bench/send:
-	 echo "\`\`\`\n$$(< $(FILE))\n\`\`\`" | gh issue comment $(BENCH_ISSUE_NUMBER) -F -
+	 echo -e "\`\`\`\n$$(< $(FILE))\n\`\`\`" | gh issue comment $(BENCH_ISSUE_NUMBER) -F -
 
 build:
 	(cd webapp/go && go build .)
