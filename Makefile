@@ -1,7 +1,9 @@
 # >() がbashじゃないと使えないので
 SHELL=/bin/bash
-# Issue番号は用途によって分けているけど、とりあえずDB周りは1
-ISSUE=1
+
+BENCH_ISSUE_NUMBER=18
+ALP_ISSUE_NUMBER=1
+PQD_ISSUE_NUMBER=2
 
 # https://github.com/cli/cli/blob/trunk/docs/install_linux.md#official-sources
 gh:
@@ -20,6 +22,10 @@ git:
 alp:
 	cat /var/log/nginx/access.log | alp json --sort sum -r -m '^/api/isu/[\w\d-]+$$,^/api/isu/[\w\d-]+/icon$$,^/api/isu/[\w\d-]+/graph$$,^/api/condition/[\w\d-]+$$,^/isu/[\w\d-]+/icon$$,^/isu/[\w\d-]+/graph$$,^/isu/[\w\d-]+$$,^/isu/[\w\d-]+/condition$$' -o count,method,uri,min,avg,max,sum
 
+alp/send:
+alp/send:
+	cat /var/log/nginx/access.log | alp json --sort sum -r -m '^/api/isu/[\w\d-]+$$,^/api/isu/[\w\d-]+/icon$$,^/api/isu/[\w\d-]+/graph$$,^/api/condition/[\w\d-]+$$,^/isu/[\w\d-]+/icon$$,^/isu/[\w\d-]+/graph$$,^/isu/[\w\d-]+$$,^/isu/[\w\d-]+/condition$$' -o count,method,uri,min,avg,max,sum | echo -e "\`\`\`\n$$(cat -)\n\`\`\`" | gh issue comment $(ALP_ISSUE_NUMBER) -F -
+
 mysqldump:
 	mysqldump -u isucon -pisucon -h localhost --no-data isucondition > log/mysqldump/$$(date +%Y_%m%d_%H%M).txt
 
@@ -29,9 +35,14 @@ tools:
 	unzip alp_linux_amd64.zip
 	sudo mv alp /usr/local/bin/
 	rm -rf alp_linux_amd64.zip
+
 .PHONY: bench
 bench: 
 	(cd bench && ./bench -all-addresses 127.0.0.11 -target 127.0.0.11:443 -tls -jia-service-url http://127.0.0.1:4999 | tee ~/log/bench/$$(date +%Y_%m%d_%H%M).txt)
+
+bench/send: FILE=
+bench/send:
+	 echo -e "\`\`\`\n$$(< $(FILE))\n\`\`\`" | gh issue comment $(BENCH_ISSUE_NUMBER) -F -
 
 build:
 	(cd webapp/go && go build .)
@@ -56,12 +67,14 @@ reload:
 pt-query-digest:
 	sudo pt-query-digest /var/log/mysql/slow-query.log | tee log/slow-query/$$(date +%Y_%m%d_%H%M).txt
 
+pt-query-digest/send:
+pt-query-digest/send:
+	sudo pt-query-digest /var/log/mysql/slow-query.log | echo -e "\`\`\`\n$$(cat -)\n\`\`\`" | gh issue comment $(PQD_ISSUE_NUMBER) -F -
+
+serve: build reload
 
 # echoを見せているのは、どんなクエリ投げたっけを見るためにしてる
 mysql/query: QUERY=
 mysql/query:
 	echo "$(QUERY)" | $(MAKE) mysql/client
 
-mysql/query/gh: QUERY=
-mysql/query/gh:
-	$(MAKE) mysql/query QUERY="$(QUERY)" | tee >(gh issue comment $(ISSUE) -F -)

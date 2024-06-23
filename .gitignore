@@ -16,3 +16,4 @@ local/
 .viminfo
 go/
 !webapp/go
+webapp/go/images
