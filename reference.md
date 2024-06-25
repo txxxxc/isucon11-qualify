@@ -1,1 +1,3 @@
 - https://github.com/tohutohu/isucon9/blob/master/Makefile
+- https://github.com/narusejun/isucon13-final/blob/master/common/etc/nginx/nginx.conf
+- https://github.com/narusejun/isucon13-final/blob/master/common/etc/nginx/sites-enabled/isupipe.conf
