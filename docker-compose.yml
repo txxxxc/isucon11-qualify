@@ -1,0 +1,89 @@
+services:
+  backend:
+    container_name: backend
+    build:
+      context: .
+      dockerfile: ./development/backend-go/dev.dockerfile
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DBNAME: isucondition
+      MYSQL_USER: isucon
+      MYSQL_PASS: isucon
+      POST_ISUCONDITION_TARGET_BASE_URL: "https://isucondition-1.t.isucon.dev"
+    entrypoint: dockerize -wait tcp://mysql:3306 -timeout 60s
+    command: air -c /development/air.toml
+    ports:
+      - "3000:3000"
+    volumes:
+      - "./webapp/public:/webapp/public"
+      - "./webapp/go:/webapp/go"
+      - "./webapp/ec256-public.pem:/webapp/ec256-public.pem"
+      - "./webapp/NoImage.jpg:/webapp/NoImage.jpg"
+      # SQLs
+      - "./webapp/sql/init.sh:/webapp/sql/init.sh"
+      - "./webapp/sql/0_Schema.sql:/webapp/sql/0_Schema.sql"
+      - "./webapp/sql/1_InitData.sql:/webapp/sql/1_InitData.sql"
+    depends_on:
+      - mysql
+
+  mysql:
+    container_name: mysql
+    build: ./development/mysql-backend
+    restart: always
+    environment:
+      MYSQL_DATABASE: isucondition
+      MYSQL_USER: isucon
+      MYSQL_PASSWORD: isucon
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      # 開発環境用のものを使って初期化
+      - "./webapp/sql/my.cnf:/etc/mysql/conf.d/my.cnf"
+      - "./webapp/sql/0_Schema.sql:/docker-entrypoint-initdb.d/0_Schema.sql"
+      - "./development/mysql/1_Constraint.sql:/docker-entrypoint-initdb.d/1_Constraint.sql"
+      - "./development/mysql/2_Init.sql:/docker-entrypoint-initdb.d/2_Init.sql"
+      - "./logs/mysql:/var/log/mysql"
+    expose:
+      - "3306"
+    ports:
+      - "3306:3306"
+
+  apitest:
+    container_name: apitest
+    build:
+      context: .
+      dockerfile: ./development/apitest/dev.dockerfile
+    environment:
+      ISUXBENCH_TARGET: backend:3000
+      ISUXBENCH_ALL_ADDRESSES: backend
+    working_dir: /bench_dir
+    entrypoint: bash
+    tty: true
+    volumes:
+      - "./bench:/bench_dir"
+    depends_on:
+      - mysql
+      - backend
+
+  nginx:
+    container_name: nginx
+    image: nginx:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "./webapp/public:/public"
+      - "./logs/nginx:/var/log/nginx"
+      - "./webapp/nginx/isucondition.conf:/etc/nginx/conf.d/default.conf"
+      - "./webapp/nginx/nginx.conf:/etc/nginx/nginx.conf"
+      - "./webapp/certificates:/etc/nginx/certificates"
+    depends_on:
+      - backend
+
+  jiaapi-mock:
+    container_name: jiaapi-mock
+    build:
+      context: .
+      dockerfile: extra/jiaapi-mock/Dockerfile
+    expose:
+      - "5000"
