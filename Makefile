@@ -47,7 +47,6 @@ bench/send:
 build:
 	(cd webapp/go && go build .)
 
-
 symlink-nginx:
 	sudo ln -sf webapp/isucondition.conf /etc/nginx/conf.d/isucondition.conf
 	sudo systemctl restart nginx
@@ -55,11 +54,13 @@ symlink-nginx:
 mysql/client:
 	@mysql -h 127.0.0.1 -P 3306 -u isucon isucondition -pisucon
 
-rotate:
-	sudo mv /var/log/mysql/slow-query.log /var/log/mysql/$$(date +%Y_%m%d_%H%M)_slow-query.log
-	sudo systemctl restart mysqld.service
+rotate/nginx:
 	sudo mv /var/log/nginx/access.log /var/log/nginx/$$(date +%Y_%m%d_%H%M).access.log
 	sudo systemctl restart nginx.service
+
+rotate/mysql:
+	sudo mv /var/log/mysql/error.log /var/log/mysql/$$(date +%Y_%m%d_%H%M)_error.log
+	sudo systemctl restart mysqld.service
 
 reload: 
 	sudo systemctl restart isucondition.go.service
@@ -71,10 +72,17 @@ pt-query-digest/send:
 pt-query-digest/send:
 	sudo pt-query-digest /var/log/mysql/slow-query.log | echo -e "\`\`\`\n$$(cat -)\n\`\`\`" | gh issue comment $(PQD_ISSUE_NUMBER) -F -
 
-serve: build reload
+pull: 
+	git pull
+
+serve: pull build reload rotate
 
 # echoを見せているのは、どんなクエリ投げたっけを見るためにしてる
 mysql/query: QUERY=
 mysql/query:
 	echo "$(QUERY)" | $(MAKE) mysql/client
 
+
+.PHONY: run-bench
+run-bench:
+	target=go docker-compose exec apitest go run ./main.go -all-addresses nginx -target nginx:443 -tls
