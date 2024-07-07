@@ -1,0 +1,2 @@
+basicConstraints=critical,CA:true,pathlen:0
+subjectAltName=DNS.1:*.t.isucon.dev
