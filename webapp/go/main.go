@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"database/sql"
 	"encoding/json"
@@ -23,6 +24,7 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/go-redis/redis/v8"
 	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
@@ -37,7 +39,7 @@ const (
 	frontendContentsPath        = "../public"
 	jiaJWTSigningKeyPath        = "../ec256-public.pem"
 	defaultIconFilePath         = "../NoImage.jpg"
-	defaultJIAServiceURL        = "http://localhost:5000"
+	defaultJIAServiceURL        = "http://jiaapi-mock:5000"
 	mysqlErrNumDuplicateEntry   = 1062
 	conditionLevelInfo          = "info"
 	conditionLevelWarning       = "warning"
@@ -52,6 +54,7 @@ var (
 	db                  *sqlx.DB
 	sessionStore        sessions.Store
 	mySQLConnectionData *MySQLConnectionEnv
+	redisClient         *redis.Client
 
 	jiaJWTSigningKey *ecdsa.PublicKey
 
@@ -176,6 +179,15 @@ type JIAServiceRequest struct {
 	IsuUUID       string `json:"isu_uuid"`
 }
 
+// isu_conditionテーブルのカラムを表す構造体
+type CachedIsuCondition struct {
+	JiaIsuUUID string    `db:"jia_isu_uuid"`
+	Timestamp  time.Time `db:"timestamp"`
+	IsSitting  bool      `db:"is_sitting"`
+	Condition  string    `db:"condition"`
+	Message    string    `db:"message"`
+}
+
 func getEnv(key string, defaultValue string) string {
 	val := os.Getenv(key)
 	if val != "" {
@@ -199,8 +211,21 @@ func (mc *MySQLConnectionEnv) ConnectDB() (*sqlx.DB, error) {
 	return sqlx.Open("mysql", dsn)
 }
 
+func generateLatestConditionKey(jiaIsuUUID string) string {
+	return "latestCondition-" + jiaIsuUUID
+}
+
 func init() {
 	sessionStore = sessions.NewCookieStore([]byte(getEnv("SESSION_KEY", "isucondition")))
+	redisClient = redis.NewClient(&redis.Options{
+		Addr:     "redis:6379",
+		Password: "",
+		DB:       0,
+	})
+	_, err := redisClient.Ping(context.Background()).Result()
+	if err != nil {
+		log.Fatalf("failed to connect to Redis: %v", err)
+	}
 
 	key, err := ioutil.ReadFile(jiaJWTSigningKeyPath)
 	if err != nil {
@@ -483,16 +508,38 @@ func getIsuList(c echo.Context) error {
 
 	responseList := []GetIsuListResponse{}
 	for _, isu := range isuList {
-		var lastCondition IsuCondition
+		var lastCondition CachedIsuCondition
 		foundLastCondition := true
-		err = tx.Get(&lastCondition, "SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY `timestamp` DESC LIMIT 1",
-			isu.JIAIsuUUID)
-		if err != nil {
+		// Redisから最後のconditionを取得
+		redisKey := generateLatestConditionKey(isu.JIAIsuUUID)
+		// TODO: scanは気が早い
+		err := redisClient.Get(context.Background(), redisKey).Scan(&lastCondition)
+		if err != nil && err != redis.Nil {
+			// print redis string
+			c.Logger().Infof(redisClient.Get(context.Background(), redisKey).Val())
+			c.Logger().Errorf("redis error: %v", err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		if err == redis.Nil {
+			// Redisに値がない場合はDBから取得
+			c.Logger().Infof("Cache not hit")
+			condition := IsuCondition{}
+			err = db.Get(&condition,
+				"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC LIMIT 1",
+				isu.JIAIsuUUID,
+			)
 			if errors.Is(err, sql.ErrNoRows) {
 				foundLastCondition = false
-			} else {
+			} else if err != nil {
 				c.Logger().Errorf("db error: %v", err)
 				return c.NoContent(http.StatusInternalServerError)
+			}
+			lastCondition = CachedIsuCondition{
+				JiaIsuUUID: isu.JIAIsuUUID,
+				Timestamp:  condition.Timestamp,
+				IsSitting:  condition.IsSitting,
+				Condition:  condition.Condition,
+				Message:    condition.Message,
 			}
 		}
 
@@ -505,7 +552,7 @@ func getIsuList(c echo.Context) error {
 			}
 
 			formattedCondition = &GetIsuConditionResponse{
-				JIAIsuUUID:     lastCondition.JIAIsuUUID,
+				JIAIsuUUID:     lastCondition.JiaIsuUUID,
 				IsuName:        isu.Name,
 				Timestamp:      lastCondition.Timestamp.Unix(),
 				IsSitting:      lastCondition.IsSitting,
@@ -520,7 +567,8 @@ func getIsuList(c echo.Context) error {
 			JIAIsuUUID:         isu.JIAIsuUUID,
 			Name:               isu.Name,
 			Character:          isu.Character,
-			LatestIsuCondition: formattedCondition}
+			LatestIsuCondition: formattedCondition,
+		}
 		responseList = append(responseList, res)
 	}
 
@@ -760,7 +808,6 @@ func getIsuIcon(c echo.Context) error {
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 
 	fileName := isFileExist(jiaIsuUUID)
-	c.Logger().Errorf("file name %v", fileName)
 
 	if fileName != "" {
 		var name string
@@ -787,12 +834,10 @@ func getIsuIcon(c echo.Context) error {
 			return c.String(http.StatusNotFound, "not found: icon")
 		}
 		c.Response().Header().Set("Cache-Control", "public, max-age=31536000")
-		c.Logger().Errorf("return image from images folder %v", jiaIsuUUID)
 		return c.Blob(http.StatusOK, "", convertedImage)
 	}
 
 	var img []byte
-	// jia_user_id←ここじゃね？
 	err = db.Get(&img, "SELECT `image` FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
 		jiaUserID, jiaIsuUUID)
 	if err != nil {
@@ -1194,9 +1239,18 @@ func getTrend(c echo.Context) error {
 	res := []TrendResponse{}
 
 	for _, character := range characterList {
-		isuList := []Isu{}
+		isuList := []struct {
+			ID         int       `db:"id"`
+			JIAIsuUUID string    `db:"jia_isu_uuid"`
+			Name       string    `db:"name"`
+			Character  string    `db:"character"`
+			JIAUserID  string    `db:"jia_user_id"`
+			CreatedAt  time.Time `db:"created_at"`
+			UpdatedAt  time.Time `db:"updated_at"`
+		}{}
+		// キャラクター毎にisuを取得する
 		err = db.Select(&isuList,
-			"SELECT * FROM `isu` WHERE `character` = ?",
+			"SELECT `id`, `jia_isu_uuid`, `name`, `character`, `jia_user_id`, `created_at`, `updated_at` FROM `isu` WHERE `character` = ?",
 			character.Character,
 		)
 		if err != nil {
@@ -1208,35 +1262,51 @@ func getTrend(c echo.Context) error {
 		characterWarningIsuConditions := []*TrendCondition{}
 		characterCriticalIsuConditions := []*TrendCondition{}
 		for _, isu := range isuList {
-			conditions := []IsuCondition{}
-			err = db.Select(&conditions,
-				"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC",
-				isu.JIAIsuUUID,
-			)
-			if err != nil {
-				c.Logger().Errorf("db error: %v", err)
+			var lastCondition CachedIsuCondition
+			// Redisから最後のconditionを取得
+			redisKey := generateLatestConditionKey(isu.JIAIsuUUID)
+			err := redisClient.Get(c.Request().Context(), redisKey).Scan(&lastCondition)
+			if err != nil && err != redis.Nil {
+				c.Logger().Errorf("redis error: %v", err)
 				return c.NoContent(http.StatusInternalServerError)
 			}
-
-			if len(conditions) > 0 {
-				isuLastCondition := conditions[0]
-				conditionLevel, err := calculateConditionLevel(isuLastCondition.Condition)
-				if err != nil {
-					c.Logger().Error(err)
+			if err == redis.Nil {
+				// Redisに値がない場合はDBから取得
+				condition := IsuCondition{}
+				err = db.Get(&condition,
+					"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC LIMIT 1",
+					isu.JIAIsuUUID,
+				)
+				if err == sql.ErrNoRows {
+					continue
+				} else if err != nil {
+					c.Logger().Errorf("db error: %v", err)
 					return c.NoContent(http.StatusInternalServerError)
 				}
-				trendCondition := TrendCondition{
-					ID:        isu.ID,
-					Timestamp: isuLastCondition.Timestamp.Unix(),
+				lastCondition = CachedIsuCondition{
+					JiaIsuUUID: condition.JIAIsuUUID,
+					Timestamp:  condition.Timestamp,
+					IsSitting:  condition.IsSitting,
+					Condition:  condition.Condition,
+					Message:    condition.Message,
 				}
-				switch conditionLevel {
-				case "info":
-					characterInfoIsuConditions = append(characterInfoIsuConditions, &trendCondition)
-				case "warning":
-					characterWarningIsuConditions = append(characterWarningIsuConditions, &trendCondition)
-				case "critical":
-					characterCriticalIsuConditions = append(characterCriticalIsuConditions, &trendCondition)
-				}
+			}
+			conditionLevel, err := calculateConditionLevel(lastCondition.Condition)
+			if err != nil {
+				c.Logger().Error(err)
+				return c.NoContent(http.StatusInternalServerError)
+			}
+			trendCondition := TrendCondition{
+				ID:        isu.ID,
+				Timestamp: lastCondition.Timestamp.Unix(),
+			}
+			switch conditionLevel {
+			case "info":
+				characterInfoIsuConditions = append(characterInfoIsuConditions, &trendCondition)
+			case "warning":
+				characterWarningIsuConditions = append(characterWarningIsuConditions, &trendCondition)
+			case "critical":
+				characterCriticalIsuConditions = append(characterCriticalIsuConditions, &trendCondition)
 			}
 
 		}
@@ -1304,22 +1374,13 @@ func postIsuCondition(c echo.Context) error {
 		return c.String(http.StatusNotFound, "not found: isu")
 	}
 
-	// isu_conditionテーブルのカラムを表す構造体
-	type IsuCondition struct {
-		JiaIsuUUID string    `db:"jia_isu_uuid"`
-		Timestamp  time.Time `db:"timestamp"`
-		IsSitting  bool      `db:"is_sitting"`
-		Condition  string    `db:"condition"`
-		Message    string    `db:"message"`
-	}
-
-	conds := make([]IsuCondition, len(req))
+	conds := make([]CachedIsuCondition, len(req))
 	for i, cond := range req {
 		if !isValidConditionFormat(cond.Condition) {
 			return c.String(http.StatusBadRequest, "bad request body")
 		}
 		timestamp := time.Unix(cond.Timestamp, 0)
-		conds[i] = IsuCondition{
+		conds[i] = CachedIsuCondition{
 			JiaIsuUUID: jiaIsuUUID,
 			Timestamp:  timestamp,
 			IsSitting:  cond.IsSitting,
@@ -1338,6 +1399,22 @@ func postIsuCondition(c echo.Context) error {
 	err = tx.Commit()
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	latestCondition := conds[len(conds)-1]
+	latestConditionJSON, err := json.Marshal(latestCondition)
+	if err != nil {
+		c.Logger().Errorf("error marshalling latest condition: %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	err = redisClient.Set(
+		c.Request().Context(),
+		generateLatestConditionKey(jiaIsuUUID),
+		latestConditionJSON,
+		0).Err()
+	if err != nil {
+		c.Logger().Errorf("redis error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
