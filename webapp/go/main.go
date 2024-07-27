@@ -48,6 +48,7 @@ const (
 	scoreConditionLevelWarning  = 2
 	scoreConditionLevelCritical = 1
 	saveFilePath                = "."
+	RedisIsuTrendKey            = "isu_trend"
 )
 
 var (
@@ -186,6 +187,11 @@ type CachedIsuCondition struct {
 	IsSitting  bool      `db:"is_sitting"`
 	Condition  string    `db:"condition"`
 	Message    string    `db:"message"`
+}
+
+func (c CachedIsuCondition) MarshalBinary() (data []byte, err error) {
+	bytes, err := json.Marshal(c)
+	return bytes, err
 }
 
 func getEnv(key string, defaultValue string) string {
@@ -513,16 +519,14 @@ func getIsuList(c echo.Context) error {
 		// Redisから最後のconditionを取得
 		redisKey := generateLatestConditionKey(isu.JIAIsuUUID)
 		// TODO: scanは気が早い
-		err := redisClient.Get(context.Background(), redisKey).Scan(&lastCondition)
+
+		result, err := redisClient.Get(c.Request().Context(), redisKey).Result()
 		if err != nil && err != redis.Nil {
-			// print redis string
-			c.Logger().Infof(redisClient.Get(context.Background(), redisKey).Val())
 			c.Logger().Errorf("redis error: %v", err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
 		if err == redis.Nil {
 			// Redisに値がない場合はDBから取得
-			c.Logger().Infof("Cache not hit")
 			condition := IsuCondition{}
 			err = db.Get(&condition,
 				"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC LIMIT 1",
@@ -533,13 +537,20 @@ func getIsuList(c echo.Context) error {
 			} else if err != nil {
 				c.Logger().Errorf("db error: %v", err)
 				return c.NoContent(http.StatusInternalServerError)
+			} else {
+				lastCondition = CachedIsuCondition{
+					JiaIsuUUID: isu.JIAIsuUUID,
+					Timestamp:  condition.Timestamp,
+					IsSitting:  condition.IsSitting,
+					Condition:  condition.Condition,
+					Message:    condition.Message,
+				}
 			}
-			lastCondition = CachedIsuCondition{
-				JiaIsuUUID: isu.JIAIsuUUID,
-				Timestamp:  condition.Timestamp,
-				IsSitting:  condition.IsSitting,
-				Condition:  condition.Condition,
-				Message:    condition.Message,
+		} else {
+			err = json.Unmarshal([]byte(result), &lastCondition)
+			if err != nil {
+				c.Logger().Error(err)
+				return c.NoContent(http.StatusInternalServerError)
 			}
 		}
 
@@ -1226,6 +1237,10 @@ func calculateConditionLevel(condition string) (string, error) {
 	return conditionLevel, nil
 }
 
+func generateCharacterKey(character string) string {
+	return fmt.Sprintf("character_%s", character)
+}
+
 // GET /api/trend
 // ISUの性格毎の最新のコンディション情報
 func getTrend(c echo.Context) error {
@@ -1239,6 +1254,21 @@ func getTrend(c echo.Context) error {
 	res := []TrendResponse{}
 
 	for _, character := range characterList {
+		characterKey := generateCharacterKey(character.Character)
+		var cachedCharacterData string
+		err = redisClient.Get(c.Request().Context(), characterKey).Scan(&cachedCharacterData)
+		if err == nil {
+			var cachedRes TrendResponse
+			err = json.Unmarshal([]byte(cachedCharacterData), &cachedRes)
+			if err != nil {
+				c.Logger().Infof("unmarshal error, %v", cachedCharacterData)
+				c.Logger().Error(err)
+				return c.NoContent(http.StatusInternalServerError)
+			}
+			c.Logger().Infof("use cache: %s", characterKey)
+			res = append(res, cachedRes)
+			continue
+		}
 		isuList := []struct {
 			ID         int       `db:"id"`
 			JIAIsuUUID string    `db:"jia_isu_uuid"`
@@ -1265,9 +1295,8 @@ func getTrend(c echo.Context) error {
 			var lastCondition CachedIsuCondition
 			// Redisから最後のconditionを取得
 			redisKey := generateLatestConditionKey(isu.JIAIsuUUID)
-			err := redisClient.Get(c.Request().Context(), redisKey).Scan(&lastCondition)
+			result, err := redisClient.Get(c.Request().Context(), redisKey).Result()
 			if err != nil && err != redis.Nil {
-				c.Logger().Errorf("redis error: %v", err)
 				return c.NoContent(http.StatusInternalServerError)
 			}
 			if err == redis.Nil {
@@ -1289,6 +1318,12 @@ func getTrend(c echo.Context) error {
 					IsSitting:  condition.IsSitting,
 					Condition:  condition.Condition,
 					Message:    condition.Message,
+				}
+			} else {
+				err = json.Unmarshal([]byte(result), &lastCondition)
+				if err != nil {
+					c.Logger().Error(err)
+					return c.NoContent(http.StatusInternalServerError)
 				}
 			}
 			conditionLevel, err := calculateConditionLevel(lastCondition.Condition)
@@ -1320,13 +1355,24 @@ func getTrend(c echo.Context) error {
 		sort.Slice(characterCriticalIsuConditions, func(i, j int) bool {
 			return characterCriticalIsuConditions[i].Timestamp > characterCriticalIsuConditions[j].Timestamp
 		})
-		res = append(res,
-			TrendResponse{
-				Character: character.Character,
-				Info:      characterInfoIsuConditions,
-				Warning:   characterWarningIsuConditions,
-				Critical:  characterCriticalIsuConditions,
-			})
+		// Cache trend response to Redis for 1 minute
+		trendRes := TrendResponse{
+			Character: character.Character,
+			Info:      characterInfoIsuConditions,
+			Warning:   characterWarningIsuConditions,
+			Critical:  characterCriticalIsuConditions,
+		}
+		trendResJSON, err := json.Marshal(trendRes)
+		if err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		err = redisClient.Set(c.Request().Context(), generateCharacterKey(character.Character), trendResJSON, time.Minute).Err()
+		if err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		res = append(res, trendRes)
 	}
 
 	return c.JSON(http.StatusOK, res)
