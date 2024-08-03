@@ -20,11 +20,11 @@ git:
 	git config --global core.editor vim
 
 alp:
-	cat /var/log/nginx/access.log | alp json --sort sum -r -m '^/api/isu/[\w\d-]+$$,^/api/isu/[\w\d-]+/icon$$,^/api/isu/[\w\d-]+/graph$$,^/api/condition/[\w\d-]+$$,^/isu/[\w\d-]+/icon$$,^/isu/[\w\d-]+/graph$$,^/isu/[\w\d-]+$$,^/isu/[\w\d-]+/condition$$' -o count,method,uri,min,avg,max,sum
+	cat logs/nginx/access.log | alp json --sort sum -r -m '^/api/isu/[\w\d-]+$$,^/api/isu/[\w\d-]+/icon$$,^/api/isu/[\w\d-]+/graph$$,^/api/condition/[\w\d-]+$$,^/isu/[\w\d-]+/icon$$,^/isu/[\w\d-]+/graph$$,^/isu/[\w\d-]+$$,^/isu/[\w\d-]+/condition$$' -o count,method,uri,min,avg,max,sum
 
 alp/send:
 alp/send:
-	cat /var/log/nginx/access.log | alp json --sort sum -r -m '^/api/isu/[\w\d-]+$$,^/api/isu/[\w\d-]+/icon$$,^/api/isu/[\w\d-]+/graph$$,^/api/condition/[\w\d-]+$$,^/isu/[\w\d-]+/icon$$,^/isu/[\w\d-]+/graph$$,^/isu/[\w\d-]+$$,^/isu/[\w\d-]+/condition$$' -o count,method,uri,min,avg,max,sum | echo -e "\`\`\`\n$$(cat -)\n\`\`\`" | gh issue comment $(ALP_ISSUE_NUMBER) -F -
+	cat logs/nginx/access.log | alp json --sort sum -r -m '^/api/isu/[\w\d-]+$$,^/api/isu/[\w\d-]+/icon$$,^/api/isu/[\w\d-]+/graph$$,^/api/condition/[\w\d-]+$$,^/isu/[\w\d-]+/icon$$,^/isu/[\w\d-]+/graph$$,^/isu/[\w\d-]+$$,^/isu/[\w\d-]+/condition$$' -o count,method,uri,min,avg,max,sum | echo -e "\`\`\`\n$$(cat -)\n\`\`\`" | gh issue comment $(ALP_ISSUE_NUMBER) -F -
 
 mysqldump:
 	mysqldump -u isucon -pisucon -h localhost --no-data isucondition > log/mysqldump/$$(date +%Y_%m%d_%H%M).txt
@@ -55,22 +55,21 @@ mysql/client:
 	@mysql -h 127.0.0.1 -P 3306 -u isucon isucondition -pisucon
 
 rotate/nginx:
-	sudo mv /var/log/nginx/access.log /var/log/nginx/$$(date +%Y_%m%d_%H%M).access.log
-	sudo systemctl restart nginx.service
+	docker-compose exec nginx mv /var/log/nginx/access.log /var/log/nginx/$$(date +%Y_%m%d_%H%M).access.log
+	docker-compose restart nginx
 
 rotate/mysql:
-	sudo mv /var/log/mysql/error.log /var/log/mysql/$$(date +%Y_%m%d_%H%M)_error.log
-	sudo systemctl restart mysqld.service
+	docker-compose exec mysql mv /var/log/mysql/slow-query.log /var/log/mysql/$$(date +%Y_%m%d_%H%M)_slow-query.log
+	docker-compose restart mysql
 
 reload: 
 	sudo systemctl restart isucondition.go.service
 
 pt-query-digest:
-	sudo pt-query-digest /var/log/mysql/slow-query.log | tee log/slow-query/$$(date +%Y_%m%d_%H%M).txt
+	docker-compose exec mysql sudo pt-query-digest logs/mysql/slow-query.log
 
 pt-query-digest/send:
-pt-query-digest/send:
-	sudo pt-query-digest /var/log/mysql/slow-query.log | echo -e "\`\`\`\n$$(cat -)\n\`\`\`" | gh issue comment $(PQD_ISSUE_NUMBER) -F -
+	docker-compose exec mysql sudo pt-query-digest logs/mysql/slow-query.log | echo -e "\`\`\`\n$$(cat -)\n\`\`\`" | gh issue comment $(PQD_ISSUE_NUMBER) -F -
 
 pull: 
 	git pull

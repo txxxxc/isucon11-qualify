@@ -64,6 +64,7 @@ services:
     depends_on:
       - mysql
       - backend
+      - redis
 
   nginx:
     container_name: nginx
@@ -87,3 +88,10 @@ services:
       dockerfile: extra/jiaapi-mock/Dockerfile
     expose:
       - "5000"
+  redis:
+    container_name: redis
+    image: redis:latest
+    expose:
+      - "6379"
+    ports:
+      - "6379:6379"
