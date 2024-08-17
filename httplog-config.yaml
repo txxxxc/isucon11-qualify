@@ -1,0 +1,9 @@
+matching_groups:
+  - ^/api/isu/[\w\d-]+$$
+  - ^/api/isu/[\w\d-]+/icon$$
+  - ^/api/isu/[\w\d-]+/graph$$
+  - ^/api/condition/[\w\d-]+$$
+  - ^/isu/[\w\d-]+/icon$$
+  - ^/isu/[\w\d-]+/graph$$
+  - ^/isu/[\w\d-]+$$
+  - ^/isu/[\w\d-]+/condition$$

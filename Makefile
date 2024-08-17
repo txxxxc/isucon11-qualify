@@ -62,6 +62,8 @@ rotate/mysql:
 	docker-compose exec mysql mv /var/log/mysql/slow-query.log /var/log/mysql/$$(date +%Y_%m%d_%H%M)_slow-query.log
 	docker-compose restart mysql
 
+rotate: rotate/nginx rotate/mysql
+
 reload: 
 	sudo systemctl restart isucondition.go.service
 

@@ -1,0 +1,20 @@
+[
+  {
+    "Type": "pprof",
+    "Label": "backend",
+    "URL": "http://backend:3000/debug/pprof/profile",
+    "Duration": 60
+  },
+  {
+    "Type": "httplog",
+    "Label": "backend",
+    "URL": "http://backend:3000/debug/log/httplog",
+    "Duration": 60
+  },
+  {
+    "Type": "slowlog",
+    "Label": "backend",
+    "URL": "http://backend:3000/debug/log/slowlog",
+    "Duration": 60
+  }
+]
