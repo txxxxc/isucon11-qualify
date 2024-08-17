@@ -15,6 +15,8 @@ services:
     command: air -c /development/air.toml
     ports:
       - "3000:3000"
+    expose:
+      - "3000"
     volumes:
       - "./webapp/public:/webapp/public"
       - "./webapp/go:/webapp/go"
@@ -24,6 +26,11 @@ services:
       - "./webapp/sql/init.sh:/webapp/sql/init.sh"
       - "./webapp/sql/0_Schema.sql:/webapp/sql/0_Schema.sql"
       - "./webapp/sql/1_InitData.sql:/webapp/sql/1_InitData.sql"
+      - "./webapp/sql/2_AlterTable.sql:/webapp/sql/2_AlterTable.sql"
+      # pprotein
+      - "./logs/nginx/access.log:/var/log/nginx/access.log"
+      - "./logs/mysql/slow-query.log:/var/log/mysql/mysql-slow.log"
+      - ".git:/webapp/go/.git"
     depends_on:
       - mysql
 
@@ -95,3 +102,37 @@ services:
       - "6379"
     ports:
       - "6379:6379"
+  pprotein:
+    container_name: pprotein
+    tty: true
+    build:
+      context: .
+      dockerfile: ./development/pprotein.Dockerfile
+      target: server
+    volumes:
+      - ./logs/nginx/access.log:/var/log/nginx/access.log
+      - ./logs/mysql/slow-query.log:/var/log/mysql/mysql-slow.log
+      - ./.git:/opt/pprotein/.git
+      - ./group-targets.json:/opt/pprotein/data/targets.json
+      - ./httplog-config.yaml:/opt/pprotein/data/alp.yml
+    ports:
+      - 9000:9000
+    expose:
+      - "9000"
+  # pprotein-agent:
+  #   container_name: pprotein-agent
+  #   tty: true
+  #   build:
+  #     context: .
+  #     dockerfile: ./development/pprotein.Dockerfile
+  #     target: pprotein-agent
+  #   volumes:
+  #     - ./logs/nginx/access.log:/var/log/nginx/access.log
+  #     - ./logs/mysql/slow-query.log:/var/log/mysql/mysql-slow.log
+  #     - ./.git:/opt/pprotein-agent/.git
+  #   environment:
+  #     - PPROTEIN_GIT_REPOSITORY=/opt/pprotein-agent/
+  #   expose:
+  #     - "19000"
+  #   ports:
+  #     - "19000:19000"
